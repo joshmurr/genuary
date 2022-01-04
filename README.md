@@ -11,3 +11,9 @@ Making no effort to keep the code clean or tidy either...
 > A raymarched icosahedron in 10,000 pixels
 
 ![01](./images/10000.png)
+
+### 02 - Dither
+
+> A raymarched torus with a Floyd-Steinberg dither
+
+![02](./images/dither.png)
