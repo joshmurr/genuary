@@ -4,10 +4,8 @@ import {
   createVAO,
   createTextCanvas,
   createTexture,
-  createBayerMatrix,
-  createSingleChannelTexture,
+  recordCanvas,
   createFramebuffer,
-  getRes,
 } from './utils'
 const screen = { x: 1000, y: 1000 } //getRes()
 const gl = createCanvas(screen.x, screen.y).getContext('webgl2')
@@ -27,46 +25,6 @@ const simple_vert = `#version 300 es
   void main(){
     gl_Position = a_position;
     v_texcoord = a_texcoord;
-  }
-`
-const in_frag = `#version 300 es
-  #define TAU 6.28318530718
-  #define MAX_ITER 5
-
-  precision highp float;
-  precision highp sampler2D;
-
-  in vec2 v_texcoord;
-  uniform sampler2D u_tex;
-  uniform float u_frame;
-  uniform vec2 u_resolution;
-  uniform vec3 u_mouse;
-  out vec4 outcolor;
-
-  void main(){
-    float time = u_frame * 0.001;
-
-    vec2 uv = gl_FragCoord.xy / u_resolution;
-
-    vec2 p = mod(uv*TAU, TAU)-250.0;
-
-    vec2 i = vec2(p);
-    float c = 1.0;
-    float inten = .005;
-
-    for (int n = 0; n < MAX_ITER; n++) {
-      float t = time * (1.0 - (3.5 / float(n+1)));
-      i = p + vec2(cos(t - i.x) + sin(t + i.y), sin(t - i.y) + cos(t + i.x));
-      c += 1.0/length(vec2(p.x / (sin(i.x+t)/inten),p.y / (cos(i.y+t)/inten)));
-    }
-    c /= float(MAX_ITER);
-    c = 1.17-pow(c, 1.4);
-    vec3 colour = vec3(pow(abs(c), 8.0));
-    colour = clamp(colour + vec3(0.0, 0.35, 0.5), 0.0, 1.0);
-    
-
-	
-    outcolor = vec4(colour, 1.0);
   }
 `
 
@@ -342,14 +300,10 @@ const dd_fs = `#version 300 es
 		float brightness = max(dot(light_dir, normals), ambient);
 		vec3 col = d > 0. ? vec3(brightness) : vec3(0);// mix(vec3(1.00, 0.64, 0.79), vec3(0.74, 0.18, 0.40), vec3(uv.g, uv));
   
-  if((d) > 5.0) {
+		if((d) > 5.0) {
       float check = checkers(p);
-      //vec3 red = vec3(1.0, 0.3, 0.0);
-      //vec3 blue = vec3(0.0, 0.5, 1.0);
       col *= mix(vec3(0.2), vec3(0.4), check);
     }
-
-    //col *= vec3(1.0, 0.64, 0.8);
 
 		outcolor = vec4(col, 1.0);
   }
@@ -373,7 +327,6 @@ const out_frag = `#version 300 es
 // SETUP SHADER PROGRAM --------------------------------
 const program = createProgram(gl, simple_vert, dd_fs)
 const output = createProgram(gl, simple_vert, out_frag)
-//const actual_output = createProgram(gl, actual_out_vs, actual_out_fs)
 // -----------------------------------------------------
 
 // POSITION BUFFER -------------------------------------
@@ -386,16 +339,7 @@ const out_vao = createVAO(gl, output, attributes)
 // -----------------------------------------------------
 
 // TEXTURE ---------------------------------------------
-const black = new Uint8Array(RES.x * RES.y * 4).fill(128)
-const text_canvas = createTextCanvas(
-  RES.x,
-  RES.y,
-  'This is a longer sentence with words words...'
-)
-const text = createTexture(gl, RES.x, RES.y, text_canvas)
 const tex_out = createTexture(gl, RES.x, RES.y)
-const bayerMatrix = createBayerMatrix()
-const tex_bayer = createSingleChannelTexture(gl, 8, 8, bayerMatrix)
 // -----------------------------------------------------
 
 // FRAMEBUFFER -----------------------------------------
@@ -405,13 +349,11 @@ const framebuffer = createFramebuffer(gl, tex_out)
 // UNIFORMS --------------------------------------------
 const u_tex = gl.getUniformLocation(program, 'u_tex')
 const u_resolution = gl.getUniformLocation(program, 'u_resolution')
-const u_mouse = gl.getUniformLocation(program, 'u_mouse')
 const u_frame = gl.getUniformLocation(program, 'u_frame')
 
 const u_resolutionOut = gl.getUniformLocation(output, 'u_resolution')
 const u_frame_ = gl.getUniformLocation(output, 'u_frame')
 const u_output = gl.getUniformLocation(output, 'u_output')
-const u_bayer = gl.getUniformLocation(output, 'u_bayer')
 // -----------------------------------------------------
 
 let count = 0
@@ -434,13 +376,8 @@ function step() {
   )
   gl.viewport(0, 0, RES.x, RES.y)
 
-  gl.uniform1i(u_tex, 0)
-  gl.activeTexture(gl.TEXTURE0 + 0)
-  gl.bindTexture(gl.TEXTURE_2D, text)
-
   gl.uniform1f(u_frame, frame++)
   gl.uniform2f(u_resolution, RES.x, RES.y)
-  gl.uniform3f(u_mouse, MOUSE.x, MOUSE.y, MOUSE.click)
   gl.drawArrays(gl.TRIANGLES, 0, 6)
 
   gl.useProgram(output)
@@ -452,9 +389,6 @@ function step() {
   gl.uniform1i(u_output, 0)
   gl.activeTexture(gl.TEXTURE0 + 0)
   gl.bindTexture(gl.TEXTURE_2D, tex_out)
-  gl.uniform1i(u_bayer, 1)
-  gl.activeTexture(gl.TEXTURE0 + 1)
-  gl.bindTexture(gl.TEXTURE_2D, tex_bayer)
   gl.drawArrays(gl.TRIANGLES, 0, 6)
 
   count += 2
@@ -469,49 +403,3 @@ step()
 //'10000_pixels',
 //step
 //)
-function recordCanvas(canvas, duration, name, callback) {
-  const videoStream = canvas.captureStream(60)
-  const mediaRecorder = new MediaRecorder(videoStream)
-  const downloadLink = document.createElement('a')
-  downloadLink.innerText = 'Download'
-  downloadLink.id = 'download'
-
-  let chunks = []
-  mediaRecorder.ondataavailable = (e) => chunks.push(e.data)
-
-  mediaRecorder.onstop = (e) => {
-    const blob = new Blob(chunks, { type: 'video/webm; codecs=vp9' })
-    chunks = []
-
-    document.body.appendChild(downloadLink)
-    downloadLink.href = URL.createObjectURL(blob)
-    downloadLink.download = `${name}.webm`
-  }
-  mediaRecorder.ondataavailable = (e) => {
-    chunks.push(e.data)
-  }
-
-  mediaRecorder.start()
-  requestAnimationFrame(callback)
-  setTimeout(() => mediaRecorder.stop(), duration)
-}
-
-document
-  .getElementsByTagName('canvas')[0]
-  .addEventListener('mousemove', function (e) {
-    const rect = this.getBoundingClientRect()
-    MOUSE.x = e.clientX - rect.left
-    MOUSE.y = rect.height - (e.clientY - rect.top) - 1
-    MOUSE.x /= SCALE
-    MOUSE.y /= SCALE
-  })
-
-let timeout
-window.addEventListener('mousemove', (e) => {
-  clearTimeout(timeout)
-  MOUSE.click = 1
-  timeout = setTimeout(function () {
-    MOUSE.click = 0
-  }, 500)
-})
-window.addEventListener('mouseup', (e) => (MOUSE.click = 0))
