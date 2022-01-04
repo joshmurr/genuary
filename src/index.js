@@ -4,6 +4,7 @@ import {
   createVAO,
   createTexture,
   createFramebuffer,
+  saveCanvasAsImage,
 } from './utils'
 const screen = { x: 128, y: 128 } //getRes()
 const gl = createCanvas(screen.x, screen.y).getContext('webgl2', {
@@ -474,22 +475,4 @@ function recordCanvas(canvas, duration, name, callback) {
   setTimeout(() => mediaRecorder.stop(), duration)
 }
 
-document
-  .getElementsByTagName('canvas')[0]
-  .addEventListener('mousemove', function (e) {
-    const rect = this.getBoundingClientRect()
-    MOUSE.x = e.clientX - rect.left
-    MOUSE.y = rect.height - (e.clientY - rect.top) - 1
-    MOUSE.x /= SCALE
-    MOUSE.y /= SCALE
-  })
-
-let timeout
-window.addEventListener('mousemove', (e) => {
-  clearTimeout(timeout)
-  MOUSE.click = 1
-  timeout = setTimeout(function () {
-    MOUSE.click = 0
-  }, 500)
-})
-window.addEventListener('mouseup', (e) => (MOUSE.click = 0))
+document.addEventListener('click', () => saveCanvasAsImage(d_canvas, 'dither'))
