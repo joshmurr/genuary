@@ -6,9 +6,12 @@ import {
   createTexture,
   recordCanvas,
   createFramebuffer,
+  saveCanvasAsImage,
 } from './utils'
-const screen = { x: 1000, y: 1000 } //getRes()
-const gl = createCanvas(screen.x, screen.y).getContext('webgl2')
+const screen = { x: 1000, y: 1000 }
+const gl = createCanvas(screen.x, screen.y).getContext('webgl2', {
+  preserveDrawingBuffer: true,
+})
 let MOUSE = {
   x: 0,
   y: 0,
@@ -396,6 +399,8 @@ function step() {
   requestAnimationFrame(step)
 }
 step()
+
+gl.canvas.addEventListener('click', () => saveCanvasAsImage(gl.canvas, '10000'))
 
 //recordCanvas(
 //document.getElementsByTagName('canvas')[0],

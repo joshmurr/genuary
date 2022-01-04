@@ -444,3 +444,20 @@ export function recordCanvas(canvas, duration, name, callback) {
   requestAnimationFrame(callback)
   setTimeout(() => mediaRecorder.stop(), duration)
 }
+
+export function saveCanvasAsImage(glCanvas, name) {
+  const saveCanvas = document.createElement('canvas')
+  saveCanvas.width = glCanvas.width
+  saveCanvas.height = glCanvas.height
+  const saveCtx = saveCanvas.getContext('2d')
+  saveCtx.drawImage(glCanvas, 0, 0)
+
+  const downloadImage = document.createElement('a')
+  downloadImage.innerText = 'Download Image'
+  downloadImage.id = 'downloadImage'
+  downloadImage.download = `${name}.png`
+  downloadImage.href = saveCanvas
+    .toDataURL('image/png')
+    .replace('image/png', 'image/octet-stream')
+  document.body.appendChild(downloadImage)
+}
