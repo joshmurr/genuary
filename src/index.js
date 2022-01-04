@@ -2,21 +2,19 @@ import {
   createCanvas,
   createProgram,
   createVAO,
-  createTextCanvas,
   createTexture,
-  createBayerMatrix,
-  createSingleChannelTexture,
   createFramebuffer,
-  getRes,
 } from './utils'
-const screen = { x: 1000, y: 1000 } //getRes()
-const gl = createCanvas(screen.x, screen.y).getContext('webgl2')
+const screen = { x: 128, y: 128 } //getRes()
+const gl = createCanvas(screen.x, screen.y).getContext('webgl2', {
+  preserveDrawingBuffer: true,
+})
 let MOUSE = {
   x: 0,
   y: 0,
   click: 0,
 }
-const SCALE = 10
+const SCALE = 1
 const RES = { x: Math.floor(screen.x / SCALE), y: Math.floor(screen.y / SCALE) }
 
 const simple_vert = `#version 300 es
@@ -29,47 +27,6 @@ const simple_vert = `#version 300 es
     v_texcoord = a_texcoord;
   }
 `
-const in_frag = `#version 300 es
-  #define TAU 6.28318530718
-  #define MAX_ITER 5
-
-  precision highp float;
-  precision highp sampler2D;
-
-  in vec2 v_texcoord;
-  uniform sampler2D u_tex;
-  uniform float u_frame;
-  uniform vec2 u_resolution;
-  uniform vec3 u_mouse;
-  out vec4 outcolor;
-
-  void main(){
-    float time = u_frame * 0.001;
-
-    vec2 uv = gl_FragCoord.xy / u_resolution;
-
-    vec2 p = mod(uv*TAU, TAU)-250.0;
-
-    vec2 i = vec2(p);
-    float c = 1.0;
-    float inten = .005;
-
-    for (int n = 0; n < MAX_ITER; n++) {
-      float t = time * (1.0 - (3.5 / float(n+1)));
-      i = p + vec2(cos(t - i.x) + sin(t + i.y), sin(t - i.y) + cos(t + i.x));
-      c += 1.0/length(vec2(p.x / (sin(i.x+t)/inten),p.y / (cos(i.y+t)/inten)));
-    }
-    c /= float(MAX_ITER);
-    c = 1.17-pow(c, 1.4);
-    vec3 colour = vec3(pow(abs(c), 8.0));
-    colour = clamp(colour + vec3(0.0, 0.35, 0.5), 0.0, 1.0);
-    
-
-	
-    outcolor = vec4(colour, 1.0);
-  }
-`
-
 const dd_fs = `#version 300 es
 	#define MAX_ITERS 512
 	#define MAX_DIST  100.
@@ -234,21 +191,25 @@ const dd_fs = `#version 300 es
 	float scene(vec3 p) {
 		float res = 1e10;
 
-    float time = u_frame * 0.01;
+    float time = u_frame * PI * 0.01;
 
 		//p = rot3d(p, vec3(1,0,0), time);
-		vec3 q = rot3d(p, vec3(0,1,0), time);
+		vec3 q = rot3d(p, vec3(1,0,0), time);
+		//q = rot3d(p, vec3(0,1,0), time);
+		//q = rot3d(p, vec3(0,0,1), time);
 
 		float k = 64.0;
 
-		//float disp = displacement(p, vec3(6.8), time) * 0.2;
-		float disp = d2(q);
+		//float disp = displacement(q, vec3(2.8), time * 0.001) * 0.1;
+		//float disp = d2(q);
 
 		//res = smin(res, sphere(p, 1.5), k);// + disp;
 		//res = smin(res, cube(p, 1.0), k);// + disp;
 		//res = smin(res, octahedron(p, 1.0), k);// + disp;
-		//res = smin(res, dodecahedron(p, 1.0), k);// + disp;
-		res = smin(res, icosahedron(q, 1.5), k);// + disp;
+		//res = smin(res, dodecahedron(q, 2.0), k);// + disp;
+		//res = smin(res, icosahedron(q, 1.5), k);// + disp;
+
+		res = smin(res, donut(q, vec2(1.7, 1.1)), k) + 0.0;
 
     res = smin(res, xzPlane(p, -3.5), k);
     //res = smin(res, xyPlane(p, -1.75), k);
@@ -336,20 +297,11 @@ const dd_fs = `#version 300 es
 		vec3 p = cam_pos + d*ray_dir;
 
 		vec3 normals = get_normals(p);
-		vec3 light_pos = vec3(10);
+		vec3 light_pos = vec3(3);
 		vec3 light_dir = normalize(light_pos - p);
-		float ambient = .1;
+		float ambient = .005;
 		float brightness = max(dot(light_dir, normals), ambient);
-		vec3 col = d > 0. ? vec3(brightness) : vec3(0);// mix(vec3(1.00, 0.64, 0.79), vec3(0.74, 0.18, 0.40), vec3(uv.g, uv));
-  
-  if((d) > 5.0) {
-      float check = checkers(p);
-      //vec3 red = vec3(1.0, 0.3, 0.0);
-      //vec3 blue = vec3(0.0, 0.5, 1.0);
-      col *= mix(vec3(0.2), vec3(0.4), check);
-    }
-
-    //col *= vec3(1.0, 0.64, 0.8);
+		vec3 col = d > 0. ? vec3(brightness) : vec3(0);
 
 		outcolor = vec4(col, 1.0);
   }
@@ -364,16 +316,19 @@ const out_frag = `#version 300 es
   uniform vec2 u_resolution;
   out vec4 outcolor;
 
+	vec4 nearest(vec4 p) {
+		return p / 255.0;
+	}
 
   void main(){
-    outcolor = texture(u_output, v_texcoord);
+    vec4 p = texture(u_output, v_texcoord);
+		outcolor = p;
   }
 `
 
 // SETUP SHADER PROGRAM --------------------------------
 const program = createProgram(gl, simple_vert, dd_fs)
 const output = createProgram(gl, simple_vert, out_frag)
-//const actual_output = createProgram(gl, actual_out_vs, actual_out_fs)
 // -----------------------------------------------------
 
 // POSITION BUFFER -------------------------------------
@@ -386,16 +341,7 @@ const out_vao = createVAO(gl, output, attributes)
 // -----------------------------------------------------
 
 // TEXTURE ---------------------------------------------
-const black = new Uint8Array(RES.x * RES.y * 4).fill(128)
-const text_canvas = createTextCanvas(
-  RES.x,
-  RES.y,
-  'This is a longer sentence with words words...'
-)
-const text = createTexture(gl, RES.x, RES.y, text_canvas)
 const tex_out = createTexture(gl, RES.x, RES.y)
-const bayerMatrix = createBayerMatrix()
-const tex_bayer = createSingleChannelTexture(gl, 8, 8, bayerMatrix)
 // -----------------------------------------------------
 
 // FRAMEBUFFER -----------------------------------------
@@ -403,20 +349,60 @@ const framebuffer = createFramebuffer(gl, tex_out)
 // -----------------------------------------------------
 
 // UNIFORMS --------------------------------------------
-const u_tex = gl.getUniformLocation(program, 'u_tex')
 const u_resolution = gl.getUniformLocation(program, 'u_resolution')
-const u_mouse = gl.getUniformLocation(program, 'u_mouse')
 const u_frame = gl.getUniformLocation(program, 'u_frame')
 
 const u_resolutionOut = gl.getUniformLocation(output, 'u_resolution')
 const u_frame_ = gl.getUniformLocation(output, 'u_frame')
 const u_output = gl.getUniformLocation(output, 'u_output')
-const u_bayer = gl.getUniformLocation(output, 'u_bayer')
 // -----------------------------------------------------
 
 let count = 0
 
+const d_canvas = document.createElement('canvas')
+const pixelSz = 4
+d_canvas.width = screen.x * pixelSz
+d_canvas.height = screen.y * pixelSz
+const d_ctx = d_canvas.getContext('2d')
+document.body.appendChild(d_canvas)
+
+function dither(pixels) {
+  let maxx = -1
+  let maxy = -1
+  for (let i = 0; i < pixels.length; i += 4) {
+    const old_p = pixels[i]
+    const new_p = Math.round(old_p / 255) * 255
+    const err = old_p - new_p
+
+    pixels[i + 4] += err * (7 / 16) // Right
+    pixels[i - 4 + screen.x * 4] += err * (3 / 16) // Right
+    pixels[i + screen.x * 4] += err * (5 / 16) // Right
+    pixels[i + 4 + screen.x * 4] += err * (3 / 16) // Right
+    for (let j = 0; j < 3; j++) {
+      pixels[i + j] = new_p
+    }
+    const fill = `rgb(${new_p},${new_p},${new_p})`
+    d_ctx.fillStyle = fill
+    const x = (i % (screen.x * 4)) / 4
+    const y = Math.floor(i / (screen.x * 4))
+    maxx = Math.max(maxx, x)
+    maxy = Math.max(maxy, y)
+    d_ctx.fillRect(x * pixelSz, y * pixelSz, pixelSz, pixelSz)
+  }
+}
+
+function flipImageData(imageDatga) {
+  const w = imageData.width,
+    h = imageData.height
+  const data = imageData.data
+  Array.from({ length: h }, (val, i) =>
+    data.slice(i * w * 4, (i + 1) * w * 4)
+  ).forEach((val, i) => data.set(val, (h - i - 1) * w * 4))
+}
+
 let frame = 0
+let imageData = new ImageData(screen.x, screen.y)
+let pixels = imageData.data
 function step() {
   let a = count % 3
   let b = (count + 1) % 3
@@ -434,13 +420,8 @@ function step() {
   )
   gl.viewport(0, 0, RES.x, RES.y)
 
-  gl.uniform1i(u_tex, 0)
-  gl.activeTexture(gl.TEXTURE0 + 0)
-  gl.bindTexture(gl.TEXTURE_2D, text)
-
   gl.uniform1f(u_frame, frame++)
   gl.uniform2f(u_resolution, RES.x, RES.y)
-  gl.uniform3f(u_mouse, MOUSE.x, MOUSE.y, MOUSE.click)
   gl.drawArrays(gl.TRIANGLES, 0, 6)
 
   gl.useProgram(output)
@@ -452,25 +433,25 @@ function step() {
   gl.uniform1i(u_output, 0)
   gl.activeTexture(gl.TEXTURE0 + 0)
   gl.bindTexture(gl.TEXTURE_2D, tex_out)
-  gl.uniform1i(u_bayer, 1)
-  gl.activeTexture(gl.TEXTURE0 + 1)
-  gl.bindTexture(gl.TEXTURE_2D, tex_bayer)
   gl.drawArrays(gl.TRIANGLES, 0, 6)
+
+  gl.readPixels(0, 0, screen.x, screen.x, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+  flipImageData(imageData)
+  dither(pixels)
+
+  //if (frame % 200 === 0) console.log('tick')
 
   count += 2
 
-  requestAnimationFrame(step)
+  //requestAnimationFrame(step)
+  setTimeout(step, 30)
 }
-step()
+//setTimeout(step, 10)
+//step()
 
-//recordCanvas(
-//document.getElementsByTagName('canvas')[0],
-//15000,
-//'10000_pixels',
-//step
-//)
+recordCanvas(d_canvas, 20000, 'dither', step)
 function recordCanvas(canvas, duration, name, callback) {
-  const videoStream = canvas.captureStream(60)
+  const videoStream = canvas.captureStream(30)
   const mediaRecorder = new MediaRecorder(videoStream)
   const downloadLink = document.createElement('a')
   downloadLink.innerText = 'Download'
@@ -486,9 +467,6 @@ function recordCanvas(canvas, duration, name, callback) {
     document.body.appendChild(downloadLink)
     downloadLink.href = URL.createObjectURL(blob)
     downloadLink.download = `${name}.webm`
-  }
-  mediaRecorder.ondataavailable = (e) => {
-    chunks.push(e.data)
   }
 
   mediaRecorder.start()

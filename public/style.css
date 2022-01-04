@@ -2,13 +2,8 @@ body {
   background-color: white;
 }
 canvas {
-  cursor: none;
   margin: 0;
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 512px;
-  height: 512px;
+  display: inline-block;
 }
 
 a {
