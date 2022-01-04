@@ -417,3 +417,30 @@ export function noise_texture(ctx) {
 
   return ctx
 }
+
+export function recordCanvas(canvas, duration, name, callback) {
+  const videoStream = canvas.captureStream(60)
+  const mediaRecorder = new MediaRecorder(videoStream)
+  const downloadLink = document.createElement('a')
+  downloadLink.innerText = 'Download'
+  downloadLink.id = 'download'
+
+  let chunks = []
+  mediaRecorder.ondataavailable = (e) => chunks.push(e.data)
+
+  mediaRecorder.onstop = (e) => {
+    const blob = new Blob(chunks, { type: 'video/webm; codecs=vp9' })
+    chunks = []
+
+    document.body.appendChild(downloadLink)
+    downloadLink.href = URL.createObjectURL(blob)
+    downloadLink.download = `${name}.webm`
+  }
+  mediaRecorder.ondataavailable = (e) => {
+    chunks.push(e.data)
+  }
+
+  mediaRecorder.start()
+  requestAnimationFrame(callback)
+  setTimeout(() => mediaRecorder.stop(), duration)
+}
