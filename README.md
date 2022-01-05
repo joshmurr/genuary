@@ -17,3 +17,7 @@ Making no effort to keep the code clean or tidy either...
 > A raymarched torus with a Floyd-Steinberg dither
 
 ![02](./images/dither.png)
+
+### 03 - Space + 04 The Next Next Fidenza
+
+![03 04](./images/03-space.png)
