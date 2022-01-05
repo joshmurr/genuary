@@ -70,7 +70,7 @@ const renderUniforms: UniformDescs = {
   u_ModelMatrix: modelMat,
   u_ViewMatrix: viewMat,
   u_ProjectionMatrix: projMat,
-  u_PointSize: 4,
+  u_PointSize: 2,
   u_ColourPalette: new Float32Array(generateIQPalette(Math.random)),
 }
 const updateUniformSetters = G.getUniformSetters(updateProgram)
@@ -155,7 +155,9 @@ function draw(now: number) {
   //setTimeout(() => requestAnimationFrame(draw), 50)
 }
 
-gl.canvas.addEventListener('click', () => saveCanvasAsImage(gl.canvas, 'test'))
+gl.canvas.addEventListener('click', () =>
+  saveCanvasAsImage(gl.canvas, '03-space')
+)
 
 //const offscreen = renderOffscreen(gl.canvas, true)
 //recordCanvas(offscreen, 40000, 'offscreen', draw)
