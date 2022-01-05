@@ -1,139 +1,163 @@
 import { GL_Handler, Geometry } from 'gl-handler'
 import { vec3, mat4 } from 'gl-matrix'
-import SimplexNoise from 'simplex-noise'
+import {
+  generateIQPalette,
+  recordCanvas,
+  renderOffscreen,
+  saveCanvasAsImage,
+} from './utils'
+import ParticleSystem from './particleSystem'
+import updateVert from './glsl/updateVert.glsl'
+import updateFrag from './glsl/passthruFrag.glsl'
+import renderVert from './glsl/renderVert.glsl'
+import renderFrag from './glsl/renderFrag.glsl'
+
+export interface PSOptions {
+  dimensions?: number
+  numParticles?: number
+  birthRate?: number
+  lifeRange?: number[]
+  directionRange?: [number, number]
+  speedRange?: [number, number]
+  gravity?: [number, number]
+}
 
 type UniformDescs = {
   [key: string]: number | number[] | mat4 | vec3 | WebGLTexture
 }
 
-export default class PointSphere extends Geometry {
-  private _numPoints: number
-
-  constructor(gl: WebGL2RenderingContext, _numPoints: number) {
-    super(gl)
-
-    this._verts = []
-    this._numPoints = _numPoints
-
-    const simplex = new SimplexNoise()
-    for (let i = 0; i < _numPoints; i++) {
-      const x = Math.random() * 2 - 1
-      const z = Math.random() * 2 - 1
-      const y = simplex.noise2D(x, z) * 0.5
-      const y_ = simplex.noise2D(x * 2, z * 2) * 0.6
-      this._verts.push(x, y * y_, z)
-    }
-  }
-
-  public linkProgram(_program: WebGLProgram) {
-    /*
-     * Finds all the relevant uniforms and attributes in the specified
-     * program and links.
-     */
-    this._buffers.push(this.gl.createBuffer())
-
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this._buffers[0])
-    this.gl.bufferData(
-      this.gl.ARRAY_BUFFER,
-      new Float32Array(this._verts),
-      this.gl.STATIC_DRAW
-    )
-
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null)
-
-    const positionAttrib = {
-      i_Position: {
-        location: this.gl.getAttribLocation(_program, 'i_Position'),
-        num_components: 3,
-        type: this.gl.FLOAT,
-        size: 4,
-      },
-    }
-
-    this._VAOs.push(this.gl.createVertexArray())
-    const VAO_desc = [
-      {
-        vao: this._VAOs[0],
-        buffers: [
-          {
-            buffer_object: this._buffers[0],
-            stride: 0,
-            attributes: positionAttrib,
-          },
-        ],
-      },
-    ]
-    VAO_desc.forEach((VAO) => this.setupVAO(VAO.buffers, VAO.vao))
-  }
-}
-
-const vert = `#version 300 es
-precision mediump float;
-
-in vec3 i_Position;
-
-uniform mat4 u_ProjectionMatrix;
-uniform mat4 u_ViewMatrix;
-uniform mat4 u_ModelMatrix;
-
-void main(){
-    gl_Position = u_ProjectionMatrix * u_ViewMatrix * u_ModelMatrix * vec4(i_Position, 1.0);
-    gl_PointSize = (gl_Position.z * -1.0) + 6.0;
-}`
-
-const frag = `#version 300 es
-precision mediump float;
-
-out vec4 OUTCOLOUR;
-
-void main(){
-    float distance = length(2.0 * gl_PointCoord - 1.0);
-    if (distance > 1.0) {
-            discard;
-    }
-    OUTCOLOUR = vec4(0.0, 0.0, 0.0, 1.0);
-}`
-
 const G = new GL_Handler()
-const canvas = G.canvas(512, 512)
+const canvas = G.canvas(1000, 1000)
 const gl = G.gl
-const pointsProgram = G.shaderProgram(vert, frag)
+
+// PROGRAMS --------------------------
+const transformFeedbackVaryings = [
+  'v_Position',
+  'v_Velocity',
+  'v_Age',
+  'v_Life',
+]
+const updateProgram = G.shaderProgram(
+  updateVert,
+  updateFrag,
+  transformFeedbackVaryings
+)
+const renderProgram = G.shaderProgram(renderVert, renderFrag)
+// -----------------------------------
+let random = []
+for (let i = 0; i < 512 * 512; ++i) {
+  random.push(Math.random() * 255)
+  random.push(Math.random() * 255)
+  random.push(Math.random() * 255)
+}
+const rgTex = G.createTexture(512, 512, 'RGB', new Uint8Array(random))
 
 const camPos: [number, number, number] = [0, 2, 3]
 let viewMat = G.viewMat({ pos: vec3.fromValues(...camPos) })
 const projMat = G.defaultProjMat()
 const modelMat = mat4.create()
 
-const points = new PointSphere(gl, 10000)
-points.linkProgram(pointsProgram)
-points.rotate = { speed: 0.0005, axis: [0, 1, 0] }
+// UNIFORMS ---------------------------
+const updateUniforms: UniformDescs = {
+  u_TimeDelta: 0,
+  u_TotalTime: 0,
+  u_RgNoise: rgTex,
+  u_Gravity: [0, 0, 0],
+  u_Force: 1.8,
+}
 
-const baseUniforms: UniformDescs = {
+const renderUniforms: UniformDescs = {
   u_ModelMatrix: modelMat,
   u_ViewMatrix: viewMat,
   u_ProjectionMatrix: projMat,
+  u_PointSize: 4,
+  u_ColourPalette: new Float32Array(generateIQPalette(Math.random)),
 }
+const updateUniformSetters = G.getUniformSetters(updateProgram)
+const renderUniformSetters = G.getUniformSetters(renderProgram)
+// ------------------------------------
 
-const uniformSetters = G.getUniformSetters(pointsProgram)
-gl.useProgram(pointsProgram)
-G.setUniforms(uniformSetters, baseUniforms)
-gl.bindVertexArray(points.VAO)
-gl.clearDepth(1.0)
-gl.enable(gl.CULL_FACE)
-gl.enable(gl.DEPTH_TEST)
+const opts: PSOptions = {
+  numParticles: 50000,
+  lifeRange: [1, 8],
+  dimensions: 3,
+  birthRate: 10,
+}
+const ps = new ParticleSystem(gl, opts)
+ps.linkProgram(updateProgram, renderProgram)
+//ps.rotate = { speed: 0.01, axis: [0, 1, 0] }
 
-function draw(time) {
+const state = [
+  {
+    update: ps.VAOs[0],
+    render: ps.VAOs[2],
+  },
+  {
+    update: ps.VAOs[1],
+    render: ps.VAOs[3],
+  },
+]
+
+let count = 0
+let oldTimestamp = 0
+let deltaTime = 0
+let time = 0
+function draw(now: number) {
+  if (oldTimestamp != 0) {
+    deltaTime = now - oldTimestamp
+    if (deltaTime > 500.0) {
+      deltaTime = 0.0
+    }
+  }
+  oldTimestamp = now
+  time += deltaTime
+
+  gl.enable(gl.BLEND)
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-  gl.clearColor(0.9, 0.9, 0.9, 1)
+  gl.clearColor(0, 0, 0, 1)
 
-  G.setUniforms(uniformSetters, {
-    ...baseUniforms,
-    u_ModelMatrix: points.updateModelMatrix(time),
+  const numParticles = ps.getNumParticles(deltaTime)
+
+  gl.useProgram(updateProgram)
+  G.setUniforms(updateUniformSetters, {
+    ...updateUniforms,
+    u_Force: 0.4,
+    u_TimeDelta: deltaTime * 0.001,
+    u_TotalTime: time * 0.001,
   })
+  gl.bindVertexArray(state[count % 2].update)
+  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, ps.buffers[++count % 2])
 
-  gl.drawArrays(gl.POINTS, 0, points.numVertices)
+  gl.enable(gl.RASTERIZER_DISCARD)
 
+  gl.beginTransformFeedback(gl.POINTS)
+  gl.drawArrays(gl.POINTS, 0, numParticles)
+  gl.endTransformFeedback()
+  gl.disable(gl.RASTERIZER_DISCARD)
+  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null)
+
+  gl.bindVertexArray(state[++count % 2].render)
+  gl.useProgram(renderProgram)
+  G.setUniforms(renderUniformSetters, {
+    ...renderUniforms,
+    u_ModelMatrix: ps.updateModelMatrix(time * 0.05),
+  })
+  gl.drawArrays(gl.POINTS, 0, Math.max(numParticles - 50, 0))
+
+  count++
+
+  gl.bindVertexArray(null)
+  gl.bindBuffer(gl.ARRAY_BUFFER, null)
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
+
+  //renderOffscreen(gl.canvas)
   requestAnimationFrame(draw)
+  //setTimeout(() => requestAnimationFrame(draw), 50)
 }
 
+gl.canvas.addEventListener('click', () => saveCanvasAsImage(gl.canvas, 'test'))
+
+//const offscreen = renderOffscreen(gl.canvas, true)
+//recordCanvas(offscreen, 40000, 'offscreen', draw)
 requestAnimationFrame(draw)
+//recordCanvas(gl.canvas, 5000, 'particles01', draw)

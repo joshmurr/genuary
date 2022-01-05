@@ -429,15 +429,12 @@ export function recordCanvas(canvas, duration, name, callback) {
   mediaRecorder.ondataavailable = (e) => chunks.push(e.data)
 
   mediaRecorder.onstop = (e) => {
-    const blob = new Blob(chunks, { type: 'video/webm; codecs=vp9' })
+    const blob = new Blob(chunks, { type: 'video/webm; codecs=h264' })
     chunks = []
 
     document.body.appendChild(downloadLink)
     downloadLink.href = URL.createObjectURL(blob)
     downloadLink.download = `${name}.webm`
-  }
-  mediaRecorder.ondataavailable = (e) => {
-    chunks.push(e.data)
   }
 
   mediaRecorder.start()
@@ -445,19 +442,44 @@ export function recordCanvas(canvas, duration, name, callback) {
   setTimeout(() => mediaRecorder.stop(), duration)
 }
 
-export function saveCanvasAsImage(glCanvas, name) {
-  const saveCanvas = document.createElement('canvas')
-  saveCanvas.width = glCanvas.width
-  saveCanvas.height = glCanvas.height
-  const saveCtx = saveCanvas.getContext('2d')
+export function renderOffscreen(glCanvas, display) {
+  const renderCanvas = getRenderCanvas(glCanvas, display)
+  const saveCtx = renderCanvas.getContext('2d')
   saveCtx.drawImage(glCanvas, 0, 0)
 
+  return renderCanvas
+}
+
+export function saveCanvasAsImage(glCanvas, name) {
   const downloadImage = document.createElement('a')
   downloadImage.innerText = 'Download Image'
   downloadImage.id = 'downloadImage'
   downloadImage.download = `${name}.png`
-  downloadImage.href = saveCanvas
+  downloadImage.href = renderOffscreen(glCanvas)
     .toDataURL('image/png')
     .replace('image/png', 'image/octet-stream')
   document.body.appendChild(downloadImage)
+}
+
+export function getRenderCanvas(glCanvas, display) {
+  let renderCanvas = document.getElementById('render-canvas')
+  if (!renderCanvas) {
+    renderCanvas = document.createElement('canvas')
+    renderCanvas.id = 'render-canvas'
+    renderCanvas.width = glCanvas.width
+    renderCanvas.height = glCanvas.height
+    if (display) document.body.appendChild(renderCanvas)
+  }
+
+  return renderCanvas
+}
+
+export function generateIQPalette(r) {
+  //prettier-ignore
+  return [
+    r(), r(), r(), 0,
+    r(), r(), r(), 0,
+    r(), r(), r(), 0,
+    r(), r(), r(), 0,
+  ]
 }

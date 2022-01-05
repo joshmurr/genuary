@@ -27,6 +27,10 @@ module.exports = {
           },
         },
       },
+      {
+        test: /\.glsl$/i,
+        loader: 'webpack-glsl-loader',
+      },
     ],
   },
   resolve: {
