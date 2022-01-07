@@ -76,7 +76,7 @@ function draw(now: number) {
   })
   gl.bindVertexArray(icos.VAO)
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-  gl.drawElements(gl.LINES, icos.numIndices, gl.UNSIGNED_SHORT, 0)
+  gl.drawElements(gl.LINES, 30 * 3, gl.UNSIGNED_SHORT, 0)
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null)
   gl.viewport(0, 0, 512, 512)

@@ -7,5 +7,5 @@ in vec3 v_Normal;
 out vec4 OUTCOLOUR;
 
 void main(){
-    OUTCOLOUR = vec4(v_Color, 1.0);
+    OUTCOLOUR = vec4(v_Normal, 1.0);
 }
