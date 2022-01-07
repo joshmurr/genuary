@@ -27,3 +27,7 @@ Making no effort to keep the code clean or tidy either...
 Used [GLSLViewer](https://github.com/patriciogonzalezvivo/glslViewer) to make this which was just lovely.
 
 ![05](./images/square.gif)
+
+### 06 - Trade Styles
+
+![06](./images/icos-spin2.gif)
