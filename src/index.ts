@@ -6,153 +6,94 @@ import {
   renderOffscreen,
   saveCanvasAsImage,
 } from './utils'
-import ParticleSystem from './particleSystem'
-import updateVert from './glsl/updateVert.glsl'
-import updateFrag from './glsl/passthruFrag.glsl'
+import Icosahedron from './icosahedron'
+import Quad from './quad'
+import frag from './glsl/icos.frag.glsl'
+import vert from './glsl/icos.vert.glsl'
+
 import renderVert from './glsl/renderVert.glsl'
 import renderFrag from './glsl/renderFrag.glsl'
-
-export interface PSOptions {
-  dimensions?: number
-  numParticles?: number
-  birthRate?: number
-  lifeRange?: number[]
-  directionRange?: [number, number]
-  speedRange?: [number, number]
-  gravity?: [number, number]
-}
 
 type UniformDescs = {
   [key: string]: number | number[] | mat4 | vec3 | WebGLTexture
 }
 
 const G = new GL_Handler()
-const canvas = G.canvas(1000, 1000)
+const canvas = G.canvas(512, 512, {})
 const gl = G.gl
 
 // PROGRAMS --------------------------
-const transformFeedbackVaryings = [
-  'v_Position',
-  'v_Velocity',
-  'v_Age',
-  'v_Life',
-]
-const updateProgram = G.shaderProgram(
-  updateVert,
-  updateFrag,
-  transformFeedbackVaryings
-)
-const renderProgram = G.shaderProgram(renderVert, renderFrag)
+const program = G.shaderProgram(vert, frag)
+const render = G.shaderProgram(renderVert, renderFrag)
 // -----------------------------------
-let random = []
-for (let i = 0; i < 512 * 512; ++i) {
-  random.push(Math.random() * 255)
-  random.push(Math.random() * 255)
-  random.push(Math.random() * 255)
-}
-const rgTex = G.createTexture(512, 512, 'RGB', new Uint8Array(random))
-
-const camPos: [number, number, number] = [0, 2, 3]
+const camPos: [number, number, number] = [0, 0, 3]
 let viewMat = G.viewMat({ pos: vec3.fromValues(...camPos) })
 const projMat = G.defaultProjMat()
 const modelMat = mat4.create()
+const renderCam = mat4.ortho(mat4.create(), 0, 0, 512, 512, -1, 1)
+
+const res = { x: 64, y: 64 }
+const renderTex = G.createTexture(res.x, res.y, {
+  type: 'RGB',
+  filter: 'NEAREST',
+})
+const fbo = G.createFramebuffer(renderTex)
+gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 
 // UNIFORMS ---------------------------
-const updateUniforms: UniformDescs = {
-  u_TimeDelta: 0,
-  u_TotalTime: 0,
-  u_RgNoise: rgTex,
-  u_Gravity: [0, 0, 0],
-  u_Force: 1.8,
-}
-
-const renderUniforms: UniformDescs = {
+const baseUniforms: UniformDescs = {
   u_ModelMatrix: modelMat,
   u_ViewMatrix: viewMat,
   u_ProjectionMatrix: projMat,
-  u_PointSize: 2,
-  u_ColourPalette: new Float32Array(generateIQPalette(Math.random)),
 }
-const updateUniformSetters = G.getUniformSetters(updateProgram)
-const renderUniformSetters = G.getUniformSetters(renderProgram)
+const uniformSetters = G.getUniformSetters(program)
+
+const renderUniforms: UniformDescs = {
+  ...baseUniforms,
+  u_Texture: renderTex,
+}
+const renderSetters = G.getUniformSetters(render)
 // ------------------------------------
 
-const opts: PSOptions = {
-  numParticles: 50000,
-  lifeRange: [1, 8],
-  dimensions: 3,
-  birthRate: 10,
-}
-const ps = new ParticleSystem(gl, opts)
-ps.linkProgram(updateProgram, renderProgram)
-//ps.rotate = { speed: 0.01, axis: [0, 1, 0] }
+const icos = new Icosahedron(gl)
+icos.linkProgram(program)
+icos.rotate = { speed: 0.01, axis: [1, 0.5, 0.8] }
 
-const state = [
-  {
-    update: ps.VAOs[0],
-    render: ps.VAOs[2],
-  },
-  {
-    update: ps.VAOs[1],
-    render: ps.VAOs[3],
-  },
-]
+const quad = new Quad(gl)
+quad.linkProgram(render)
 
-let count = 0
-let oldTimestamp = 0
-let deltaTime = 0
-let time = 0
+gl.enable(gl.CULL_FACE)
+gl.enable(gl.DEPTH_TEST)
+gl.clearColor(0, 0, 0, 1)
+gl.clearDepth(1.0)
 function draw(now: number) {
-  if (oldTimestamp != 0) {
-    deltaTime = now - oldTimestamp
-    if (deltaTime > 500.0) {
-      deltaTime = 0.0
-    }
-  }
-  oldTimestamp = now
-  time += deltaTime
-
-  gl.enable(gl.BLEND)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo)
+  gl.viewport(0, 0, res.x, res.y)
+  gl.useProgram(program)
+  G.setUniforms(uniformSetters, {
+    ...baseUniforms,
+    u_ModelMatrix: icos.updateModelMatrix(now * 0.1),
+  })
+  gl.bindVertexArray(icos.VAO)
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-  gl.clearColor(0, 0, 0, 1)
+  gl.drawElements(gl.TRIANGLES, icos.numIndices, gl.UNSIGNED_SHORT, 0)
 
-  const numParticles = ps.getNumParticles(deltaTime)
-
-  gl.useProgram(updateProgram)
-  G.setUniforms(updateUniformSetters, {
-    ...updateUniforms,
-    u_Force: 0.4,
-    u_TimeDelta: deltaTime * 0.001,
-    u_TotalTime: time * 0.001,
-  })
-  gl.bindVertexArray(state[count % 2].update)
-  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, ps.buffers[++count % 2])
-
-  gl.enable(gl.RASTERIZER_DISCARD)
-
-  gl.beginTransformFeedback(gl.POINTS)
-  gl.drawArrays(gl.POINTS, 0, numParticles)
-  gl.endTransformFeedback()
-  gl.disable(gl.RASTERIZER_DISCARD)
-  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null)
-
-  gl.bindVertexArray(state[++count % 2].render)
-  gl.useProgram(renderProgram)
-  G.setUniforms(renderUniformSetters, {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+  gl.viewport(0, 0, 512, 512)
+  gl.useProgram(render)
+  G.setUniforms(renderSetters, {
     ...renderUniforms,
-    u_ModelMatrix: ps.updateModelMatrix(time * 0.05),
+    //u_ViewMatrix: renderCam,
   })
-  gl.drawArrays(gl.POINTS, 0, Math.max(numParticles - 50, 0))
-
-  count++
+  gl.bindVertexArray(quad.VAO)
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+  gl.drawElements(gl.TRIANGLES, quad.numIndices, gl.UNSIGNED_SHORT, 0)
 
   gl.bindVertexArray(null)
   gl.bindBuffer(gl.ARRAY_BUFFER, null)
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null)
 
-  //renderOffscreen(gl.canvas)
   requestAnimationFrame(draw)
-  //setTimeout(() => requestAnimationFrame(draw), 50)
 }
 
 gl.canvas.addEventListener('click', () =>
