@@ -31,3 +31,7 @@ Used [GLSLViewer](https://github.com/patriciogonzalezvivo/glslViewer) to make th
 ### 06 - Trade Styles
 
 ![06](./images/icos-spin2.gif)
+
+### 08 - Single Curve Only
+
+![08](./images/diffLine.png)
