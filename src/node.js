@@ -1,5 +1,18 @@
 import { vec2 } from 'gl-matrix'
 
+const clamp = (val, lb, up) => Math.max(Math.min(val, up), lb)
+
+const vec2limit = function (vec, lim) {
+  const [x, y] = vec
+  const n = Math.hypot(x, y)
+  const f = Math.min(n, lim) / n
+  const _x = x * f
+  const _y = y * f
+  vec[0] = _x
+  vec[1] = _y
+  return vec2.fromValues(_x, _y)
+}
+
 export class DifferentialLine {
   constructor(
     maxForce,
@@ -110,11 +123,7 @@ export class Node {
 
   update() {
     vec2.add(this.velocity, this.velocity, this.acceleration)
-    vec2.max(
-      this.velocity,
-      this.velocity,
-      vec2.fromValues(this.maxSpeed, this.maxSpeed)
-    )
+    vec2limit(this.velocity, this.maxSpeed)
     vec2.add(this.position, this.position, this.velocity)
     vec2.scale(this.acceleration, this.acceleration, 0)
   }
@@ -148,9 +157,10 @@ export class Node {
       vec2.scale(steer, steer, 1 / count)
     }
     if (vec2.len(steer) > 0) {
+      vec2.normalize(steer, steer)
       vec2.scale(steer, steer, this.maxSpeed)
       vec2.sub(steer, steer, this.velocity)
-      vec2.max(steer, steer, this.maxForce)
+      vec2limit(steer, this.maxForce)
     }
     return steer
   }
@@ -180,9 +190,10 @@ export class Node {
 
   seek(target) {
     const desired = vec2.sub(vec2.create(), target, this.position)
+    vec2.normalize(desired, desired)
     vec2.scale(desired, desired, this.maxSpeed)
     const steer = vec2.sub(vec2.create(), desired, this.velocity)
-    vec2.max(steer, steer, this.maxForce)
+    vec2limit(steer, this.maxForce)
     return steer
   }
 }
