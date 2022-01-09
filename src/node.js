@@ -1,4 +1,5 @@
 import { vec2 } from 'gl-matrix'
+import { HSVtoRGB } from './utils'
 
 const clamp = (val, lb, up) => Math.max(Math.min(val, up), lb)
 
@@ -77,6 +78,12 @@ export class DifferentialLine {
     }
   }
 
+  getRGB(k) {
+    const f = Math.floor
+    const [R, G, B] = HSVtoRGB(k, 1.0, 1.0)
+    return `rgb(${f(R * 255)}, ${f(G * 255)}, ${f(B * 255)})`
+  }
+
   render(ctx) {
     for (let i = 0; i < this.nodes.length - 1; i++) {
       const n1 = this.nodes[i]
@@ -93,6 +100,9 @@ export class DifferentialLine {
         ctx.lineTo(x3 + 0, y3 + 0)
       }
 
+      const ii = i / this.nodes.length
+      const col = this.getRGB(ii)
+      ctx.strokeStyle = col
       ctx.stroke()
     }
   }

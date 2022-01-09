@@ -1,6 +1,6 @@
 import { vec2 } from 'gl-matrix'
 import { Node, DifferentialLine } from './node'
-import { recordFromCanvas } from './utils'
+import { recordCanvas } from './utils'
 
 const dims = { x: 512, y: 512 }
 const canvas = document.createElement('canvas')
@@ -11,9 +11,9 @@ const ctx = canvas.getContext('2d')
 document.body.appendChild(canvas)
 
 const maxForce = 1.1
-const maxSpeed = 1.0
-const desiredSeperation = 55
-const seperationCohesionRatio = 1.8
+const maxSpeed = 1.2
+const desiredSeperation = 100
+const seperationCohesionRatio = 1.5
 const maxEdgeLen = 5
 
 const diffLine = new DifferentialLine(
@@ -37,6 +37,8 @@ ctx.lineWidth = 3
 ctx.lineCap = 'round'
 ctx.strokeStyle = '#0F0'
 ctx.fillStyle = 'black'
+ctx.fillRect(0, 0, canvas.width, canvas.height)
+ctx.fillStyle = 'rgba(0,0,0,0.01)'
 
 let timeout = null
 let play = true
@@ -51,6 +53,7 @@ function draw() {
 
 canvas.addEventListener('click', () => clearTimeout(timeout))
 //canvas.addEventListener('click', () => (play = !play))
-//canvas.addEventListener('click', draw)
+canvas.addEventListener('click', draw)
 
-draw()
+//draw()
+recordCanvas(canvas, 30000, 'diffLine', draw)
