@@ -35,3 +35,7 @@ Used [GLSLViewer](https://github.com/patriciogonzalezvivo/glslViewer) to make th
 ### 08 - Single Curve Only
 
 ![08](./images/diffLine.png)
+
+### 09 - Architecture
+
+![09](./architecture.gif)

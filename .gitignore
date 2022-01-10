@@ -4,3 +4,5 @@ dist-zipped/
 yarn.lockpackage-lock.json
 videos/
 glslviewer/
+seq1/
+seq2/
