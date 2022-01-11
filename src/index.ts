@@ -27,7 +27,7 @@ type UniformDescs = {
 }
 
 const G = new GL_Handler()
-const canvas = G.canvas(1000, 1000)
+const canvas = G.canvas(window.innerWidth, window.innerHeight, {})
 const gl = G.gl
 
 // PROGRAMS --------------------------
@@ -50,7 +50,10 @@ for (let i = 0; i < 512 * 512; ++i) {
   random.push(Math.random() * 255)
   random.push(Math.random() * 255)
 }
-const rgTex = G.createTexture(512, 512, 'RGB', new Uint8Array(random))
+const rgTex = G.createTexture(512, 512, {
+  type: 'RGB',
+  data: new Uint8Array(random),
+})
 
 const camPos: [number, number, number] = [0, 2, 3]
 let viewMat = G.viewMat({ pos: vec3.fromValues(...camPos) })
